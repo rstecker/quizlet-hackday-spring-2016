@@ -1,13 +1,13 @@
 package com.example.rebeccastecker.quizletquest;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
-import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.Toolbar;
 import android.util.Log;
+import android.util.Pair;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -21,7 +21,9 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+import com.example.rebeccastecker.quizletquest.models.Img;
 import com.example.rebeccastecker.quizletquest.models.Set;
+import com.example.rebeccastecker.quizletquest.models.Term;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.MultiFormatWriter;
@@ -30,12 +32,18 @@ import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
+import com.squareup.picasso.Picasso;
 
 import java.io.IOException;
+import java.util.Date;
 
 import me.dm7.barcodescanner.zxing.ZXingScannerView;
 
-public class StartActivity extends AppCompatActivity implements ZXingScannerView.ResultHandler {
+public class StartActivity extends Activity implements ZXingScannerView.ResultHandler {
+
+    private long lastScannedTermId = 0;
+    private long currentSetId = 0;
+    private GameMaster currentGame;
 
     public final static int WHITE = 0xFFFFFFFF;
     public final static int BLACK = 0xFF000000;
@@ -43,19 +51,23 @@ public class StartActivity extends AppCompatActivity implements ZXingScannerView
     private TextView textView;
     public static final String TAG = "Rebecca";
     private RequestQueue queue;
+    private ImageView goalImageView;
+    private TextView goalTextView;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         queue = Volley.newRequestQueue(this);
         setContentView(R.layout.activity_start);
-        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
 
-        ViewGroup contentFrame = (ViewGroup) findViewById(R.id.content_frame);
+        ViewGroup contentFrame = (ViewGroup) findViewById(R.id.scan_window);
 
         ImageView imageView = (ImageView) findViewById(R.id.qrCode);
-        textView = (TextView) findViewById(R.id.header_txt);
+        goalImageView = (ImageView) findViewById(R.id.current_goal_img);
+        goalTextView = (TextView) findViewById(R.id.current_goal_txt);
+        textView = (TextView) findViewById(R.id.title_txt);
 
         textView.setText("starting...");
 
@@ -72,14 +84,13 @@ public class StartActivity extends AppCompatActivity implements ZXingScannerView
         mScannerView = new ZXingScannerView(this);   // Programmatically initialize the scanner view
         mScannerView.setFlash(false);
 
-
         contentFrame.addView(mScannerView);
-        try {
-            Bitmap bitmap = encodeAsBitmap("sharks!");
-            imageView.setImageBitmap(bitmap);
-        } catch (WriterException e) {
-            e.printStackTrace();
-        }
+//        try {
+//            Bitmap bitmap = encodeAsBitmap("sharks!");
+//            imageView.setImageBitmap(bitmap);
+//        } catch (WriterException e) {
+//            e.printStackTrace();
+//        }
     }
 
     Bitmap encodeAsBitmap(String str) throws WriterException {
@@ -125,8 +136,7 @@ public class StartActivity extends AppCompatActivity implements ZXingScannerView
                 if (resultCode != RESULT_CANCELED) {
                     IntentResult scanResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
                     String moar_data = scanResult.getContents();
-                    Log.i(TAG, "I got stuff!! "+moar_data+ " : "+mScannerView.getFlash());
-                    textView.setText(moar_data);
+                    Log.w(TAG, "I got stuff!! "+moar_data+ " : "+mScannerView.getFlash());
                     mScannerView.setFlash(false);
                     // use this data
                 } else {
@@ -148,28 +158,6 @@ public class StartActivity extends AppCompatActivity implements ZXingScannerView
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_start, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
-            return true;
-        }
-
-        return super.onOptionsItemSelected(item);
-    }
-
-    @Override
     public void handleResult(Result rawResult) {
         // Do something with the result here
         Log.v(TAG, rawResult.getText() + " : "+ mScannerView.getFlash()); // Prints scan results
@@ -179,12 +167,20 @@ public class StartActivity extends AppCompatActivity implements ZXingScannerView
         mScannerView.setFlash(false);
 
         String text = rawResult.getText();
+        Long scannedNumber = null;
+        try {
+             scannedNumber = Long.parseLong(text.substring(1));
+        } catch (NumberFormatException e) {}
 
-        if (text.startsWith("s")) {
+        if (text.startsWith("s") && scannedNumber != null && shouldLoadSet(scannedNumber)) {
             textView.setText("Loading set "+ rawResult.getText()+"...");
-            loadSet(415);
-        } else if (text.startsWith("t")) {
+            requestSet(scannedNumber);
+        } else if (text.startsWith("t") && currentGame == null) {
             textView.setText("You need to start a Quest before you can scan answers!");
+        } else if (text.startsWith("t") && currentGame != null && currentGame.isOver()) {
+            textView.setText("You need to re-start the Quest before you can scan answers!");
+        } else if (text.startsWith("t") && scannedNumber != null && currentGame != null && !currentGame.isOver()) {
+            processAnswerSubmitted(scannedNumber);
         }
 
         // If you would like to resume scanning, call this method below:
@@ -195,16 +191,57 @@ public class StartActivity extends AppCompatActivity implements ZXingScannerView
         ObjectMapper mapper = new ObjectMapper();
         try {
             Set set = mapper.readValue(jsonString, Set.class);
-            Log.w(TAG, "OMG! WINNING! "+set);
-            Log.w(TAG, "I see this many terms : "+set.terms.size());
-            Log.w(TAG, "I see this many terms : "+set.terms.get(0).term+" : "+set.terms.get(0).id);
+            currentGame = new GameMaster(set, GameMaster.Mode.DEFINITIONS);
+            showQuestStep(currentGame.getCurrentQuestionText(), currentGame.getCurrentQuestionImage());
         } catch (IOException e) {
             Log.w(TAG, "Totes error chewing on that string : "+e);
             return;
         }
     }
 
-    private void loadSet(int setId) {
+    private void processAnswerSubmitted(long termId) {
+        if (!shouldConsiderTermId(termId)) {
+            // FIXME : this is... likely? a double scan, ignore for now (should be handled better)
+            Log.w(TAG, "  > ignoring a double scan... "+termId);
+            return;
+        }
+        Pair<Term, Term> problem = currentGame.submitAnswer(termId);
+        if (problem == null) {
+            // success!
+            if (currentGame.nextQuestion()) {
+                textView.setText("Correct!");
+                Log.w(TAG, "they totes got it right! "+termId+" was right");
+                showQuestStep(currentGame.getCurrentQuestionText(), currentGame.getCurrentQuestionImage());
+            } else {
+                // game over!
+                textView.setText("Game over, man! Game over!");
+                Log.w(TAG, "Game over!");
+            }
+        } else {
+            // they done did wrong
+            if (problem.second == null) {
+                textView.setText("Oops, wrong answer! ... (1)");
+                Log.w(TAG, "Fail! "+problem.first.id+" was what we were looking for and you submitted... ??");
+            } else {
+                textView.setText("Oops, wrong answer! ... (2)");
+                Log.w(TAG, "Fail! "+problem.first.id+" was what we were looking for and you submitted "+problem.second.id);
+            }
+            currentGame.restartQuest();
+            textView.setText("Restarting game....");
+            showQuestStep(currentGame.getCurrentQuestionText(), currentGame.getCurrentQuestionImage());
+        }
+    }
+
+    public void showQuestStep(String text, Img img) {
+        if (text != null) {
+            goalTextView.setText(text);
+        }
+        if (img != null) {
+            Picasso.with(this).load(img.url).into(goalImageView);
+        }
+    }
+
+    private void requestSet(long setId) {
         String url = "https://api.quizlet.com/2.0/sets/" + setId+ "?client_id=BcpDSe7sYr";
         Log.w(TAG, "We're hitting : "+url);
         // Request a string response from the provided URL.
@@ -222,7 +259,26 @@ public class StartActivity extends AppCompatActivity implements ZXingScannerView
                 Log.w(TAG, "That didn't work! " + error);
             }
         });
+
         // Add the request to the RequestQueue.
         queue.add(stringRequest);
+    }
+
+    private synchronized boolean shouldLoadSet(long setId) {
+        lastScannedTermId = 0;
+        if (setId == currentSetId) {
+            return false;
+        }
+        currentSetId = setId;
+        return true;
+    }
+
+    private synchronized boolean shouldConsiderTermId(long termId) {
+        currentSetId = 0;
+        if (lastScannedTermId == termId) {
+            return false;
+        }
+        lastScannedTermId = termId;
+        return true;
     }
 }

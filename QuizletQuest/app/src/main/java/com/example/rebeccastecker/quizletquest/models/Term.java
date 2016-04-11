@@ -14,4 +14,5 @@ public class Term {
     public Long id;
     @JsonProperty("definition")
     public String def;
+    public Img image;
 }
