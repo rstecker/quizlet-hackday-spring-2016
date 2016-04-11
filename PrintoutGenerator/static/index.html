@@ -1,0 +1,76 @@
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script>
+<script src="qrcode.js"></script>
+<style>
+.card {
+  display: inline-block;
+  border: 1px solid black;
+  margin: 1px;
+  text-align: center;
+}
+.code {
+  zoom: 0.5;
+  border: 1px solid black;
+}
+.space .word{
+  margin-bottom: 100px;
+}
+.start {
+  font-weight: bold;
+}
+.start .code {
+  zoom: 0.75;
+}
+.deets {
+  font-weight: normal;
+  font-size: 0.7em;
+}
+</style>
+<input type="text" value='105326562' class="js-set-id">
+<div class="js-load-set" style="display: inline-block;">Load a set!</div>
+<input type="checkbox" class="js-give-space"> Leave space for illustrations?&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+<input type="checkbox" class="js-switch">Switch word/definition?
+<div class="cards"></div>
+<script type="text/javascript">
+
+$('.js-give-space').change(function() {
+  val = $('.js-give-space').prop("checked");
+  $('.card').toggleClass('space', val);
+})
+$('.js-switch').change(function() {
+  $('.card').each(function(i, dom){
+    el = $(dom);
+    wordHolder = el.find('.word').html();
+    el.find('.word').html(el.find('.def').html());
+    el.find('.def').html(wordHolder);
+  });
+})
+$('.js-load-set').click(function() {
+  const setId = $('.js-set-id').val();
+  $.get('/proxy/https://api.quizlet.com/2.0/sets/'+setId, function(data) {
+    console.log("YO! I just got some data: ", data);
+    data.terms.forEach(function(t){
+      console.log(t);
+      var s = '<div class="card">';
+      s += '<div class="word">'+t.term+'</div>';
+      s += '<div class="code t'+t.id+'"></div>';
+      s += '<div class="def">'+t.definition+'</div>';
+      s += '</div>'
+      $('.cards').append(s);
+      _.delay(function() {
+        new QRCode($(".t"+t.id)[0], "t"+t.id);
+      }, 2*1000);
+    });
+
+    var s = '<BR><div class="card start">';
+    s += '<div class="">'+data.title+'</div>';
+    s += '<div class="code s'+data.id+'"></div>';
+    s += '<div class="deets">'+data.terms.length+' terms, created by '+data.creator.username+'</div>';
+    s += '</div>'
+    $('.cards').append(s);
+    _.delay(function() {
+      new QRCode($(".s"+data.id)[0], "s"+data.id);
+    }, 2*1000);
+  });
+});
+</script>
