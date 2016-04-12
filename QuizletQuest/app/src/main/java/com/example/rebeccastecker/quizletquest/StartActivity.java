@@ -4,15 +4,13 @@ import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
-import android.support.design.widget.FloatingActionButton;
-import android.support.design.widget.Snackbar;
+import android.os.Handler;
 import android.util.Log;
-import android.util.Pair;
 import android.view.View;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
 import android.widget.TextView;
 
 import com.android.volley.Request;
@@ -21,9 +19,9 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+import com.example.rebeccastecker.quizletquest.models.Grade;
 import com.example.rebeccastecker.quizletquest.models.Img;
 import com.example.rebeccastecker.quizletquest.models.Set;
-import com.example.rebeccastecker.quizletquest.models.Term;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.MultiFormatWriter;
@@ -35,7 +33,6 @@ import com.google.zxing.integration.android.IntentResult;
 import com.squareup.picasso.Picasso;
 
 import java.io.IOException;
-import java.util.Date;
 
 import me.dm7.barcodescanner.zxing.ZXingScannerView;
 
@@ -44,6 +41,7 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
     private long lastScannedTermId = 0;
     private long currentSetId = 0;
     private GameMaster currentGame;
+    private GameMaster.Mode m = GameMaster.Mode.DEFINITIONS;
 
     public final static int WHITE = 0xFFFFFFFF;
     public final static int BLACK = 0xFF000000;
@@ -53,6 +51,9 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
     private RequestQueue queue;
     private ImageView goalImageView;
     private TextView goalTextView;
+
+    private ImageView pathTraveledView;
+    private ImageView pathNewView;
 
 
     @Override
@@ -64,33 +65,29 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
 
         ViewGroup contentFrame = (ViewGroup) findViewById(R.id.scan_window);
 
-        ImageView imageView = (ImageView) findViewById(R.id.qrCode);
+        pathTraveledView = (ImageView) findViewById(R.id.path_traveled);
+        pathNewView = (ImageView) findViewById(R.id.path_new);
+
+
         goalImageView = (ImageView) findViewById(R.id.current_goal_img);
         goalTextView = (TextView) findViewById(R.id.current_goal_txt);
         textView = (TextView) findViewById(R.id.title_txt);
 
-        textView.setText("starting...");
+        textView.setText("");
 
-        FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
-                doThing();
-            }
-        });
 
         mScannerView = new ZXingScannerView(this);   // Programmatically initialize the scanner view
         mScannerView.setFlash(false);
 
         contentFrame.addView(mScannerView);
-//        try {
-//            Bitmap bitmap = encodeAsBitmap("sharks!");
-//            imageView.setImageBitmap(bitmap);
-//        } catch (WriterException e) {
-//            e.printStackTrace();
-//        }
+
+        if (savedInstanceState != null) {
+            GameMaster game = savedInstanceState.getParcelable("key");
+            if (game != null) {
+                currentGame = game;
+                showQuestStep(currentGame.getCurrentQuestionText(), currentGame.getCurrentQuestionImage());
+            }
+        }
     }
 
     Bitmap encodeAsBitmap(String str) throws WriterException {
@@ -130,6 +127,15 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (currentGame != null) {
+            outState.putParcelable("key", currentGame);
+        }
+    }
+
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         switch (requestCode) {
             case IntentIntegrator.REQUEST_CODE: {
@@ -163,7 +169,6 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
         Log.v(TAG, rawResult.getText() + " : "+ mScannerView.getFlash()); // Prints scan results
         Log.v(TAG, rawResult.getBarcodeFormat().toString()); // Prints the scan format (qrcode, pdf417 etc.)
 
-        textView.setText(rawResult.getText());
         mScannerView.setFlash(false);
 
         String text = rawResult.getText();
@@ -173,7 +178,7 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
         } catch (NumberFormatException e) {}
 
         if (text.startsWith("s") && scannedNumber != null && shouldLoadSet(scannedNumber)) {
-            textView.setText("Loading set "+ rawResult.getText()+"...");
+            textView.setText("Going to Quizlet for "+ rawResult.getText()+"...");
             requestSet(scannedNumber);
         } else if (text.startsWith("t") && currentGame == null) {
             textView.setText("You need to start a Quest before you can scan answers!");
@@ -191,7 +196,8 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
         ObjectMapper mapper = new ObjectMapper();
         try {
             Set set = mapper.readValue(jsonString, Set.class);
-            currentGame = new GameMaster(set, GameMaster.Mode.DEFINITIONS);
+            ((TextView)findViewById(R.id.set_name)).setText(set.title);
+            currentGame = new GameMaster(set, m);
             showQuestStep(currentGame.getCurrentQuestionText(), currentGame.getCurrentQuestionImage());
         } catch (IOException e) {
             Log.w(TAG, "Totes error chewing on that string : "+e);
@@ -205,8 +211,8 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
             Log.w(TAG, "  > ignoring a double scan... "+termId);
             return;
         }
-        Pair<Term, Term> problem = currentGame.submitAnswer(termId);
-        if (problem == null) {
+        Grade grade = currentGame.submitAnswer(termId);
+        if (grade.isCorrect) {
             // success!
             if (currentGame.nextQuestion()) {
                 textView.setText("Correct!");
@@ -215,24 +221,78 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
             } else {
                 // game over!
                 textView.setText("Game over, man! Game over!");
+                showQuestStep("", null);
                 Log.w(TAG, "Game over!");
             }
         } else {
-            // they done did wrong
-            if (problem.second == null) {
-                textView.setText("Oops, wrong answer! ... (1)");
-                Log.w(TAG, "Fail! "+problem.first.id+" was what we were looking for and you submitted... ??");
-            } else {
-                textView.setText("Oops, wrong answer! ... (2)");
-                Log.w(TAG, "Fail! "+problem.first.id+" was what we were looking for and you submitted "+problem.second.id);
-            }
-            currentGame.restartQuest();
-            textView.setText("Restarting game....");
-            showQuestStep(currentGame.getCurrentQuestionText(), currentGame.getCurrentQuestionImage());
+            handleWrongResponse(grade);
+            Log.w(TAG, "Fail! "+grade.correctText+"/"+grade.correctImg+" was what we were looking for and you submitted "+grade.submittedText+"/"+grade.submittedImg+" (which would have gone paired with "+grade.wouldHaveBeenText+" / "+grade.wouldHaveBeenImg+")");
         }
     }
 
+    private void handleWrongResponse(Grade grade) {
+        ((TextView)findViewById(R.id.correct_text)).setText(grade.correctText);
+        if (grade.correctImg != null) {
+            Picasso.with(this).load(grade.correctImg.url).into(((ImageView)findViewById(R.id.correct_img)));
+            findViewById(R.id.correct_img).setVisibility(View.VISIBLE);
+        } else {
+            findViewById(R.id.correct_img).setVisibility(View.GONE);
+        }
+        textView.setText("Oops, that wasn't quite right!");
+
+        ((TextView)findViewById(R.id.submitted_text)).setText(grade.submittedText);
+        if (grade.submittedImg != null) {
+            Picasso.with(this).load(grade.submittedImg.url).into(((ImageView)findViewById(R.id.submitted_img)));
+            findViewById(R.id.submitted_img).setVisibility(View.VISIBLE);
+        } else {
+            findViewById(R.id.submitted_img).setVisibility(View.GONE);
+        }
+
+        ((TextView)findViewById(R.id.would_have_been_text)).setText(grade.wouldHaveBeenText);
+        if (grade.wouldHaveBeenImg != null) {
+            Picasso.with(this).load(grade.wouldHaveBeenImg.url).into(((ImageView)findViewById(R.id.would_have_been_img)));
+            findViewById(R.id.would_have_been_img).setVisibility(View.VISIBLE);
+        } else {
+            findViewById(R.id.would_have_been_img).setVisibility(View.GONE);
+        }
+
+        ((TextView)findViewById(R.id.question_text)).setText(grade.questionText);
+        if (grade.questionImg != null) {
+            Picasso.with(this).load(grade.questionImg.url).into(((ImageView)findViewById(R.id.question_img)));
+            findViewById(R.id.question_img).setVisibility(View.VISIBLE);
+        } else {
+            findViewById(R.id.question_img).setVisibility(View.GONE);
+        }
+
+
+        findViewById(R.id.pre_game).setVisibility(View.GONE);
+        findViewById(R.id.ask_phase).setVisibility(View.GONE);
+        findViewById(R.id.fail_phase).setVisibility(View.VISIBLE);
+        findViewById(R.id.skull).setVisibility(View.VISIBLE);
+
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                lastScannedTermId = 0;  // in case the game starts over where they last guessed
+                findViewById(R.id.skull).setVisibility(View.GONE);
+                currentGame.restartQuest();
+                showQuestStep(currentGame.getCurrentQuestionText(), currentGame.getCurrentQuestionImage());
+                textView.setText("We lost our way, best to start over from the beginning...");
+            }
+        }, 10 * 1000);
+    }
+
+
     public void showQuestStep(String text, Img img) {
+        double progress = currentGame.getProgressPercentage();
+        Log.w(TAG, "I just got progress : "+progress);
+        pathTraveledView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, (float) progress));
+        pathNewView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, (float) (1 - progress) ));
+        textView.setText("Can you find:");
+
+        findViewById(R.id.pre_game).setVisibility(View.GONE);
+        findViewById(R.id.ask_phase).setVisibility(View.VISIBLE);
+        findViewById(R.id.fail_phase).setVisibility(View.GONE);
         if (text != null) {
             goalTextView.setText(text);
         }
@@ -280,5 +340,36 @@ public class StartActivity extends Activity implements ZXingScannerView.ResultHa
         }
         lastScannedTermId = termId;
         return true;
+    }
+    public void onRadioButtonClicked(View view) {
+        // Is the button now checked?
+        boolean checked = ((RadioButton) view).isChecked();
+
+        // Check which radio button was clicked
+        switch(view.getId()) {
+            case R.id.radio_def:
+                if (checked)
+                    m = GameMaster.Mode.DEFINITIONS;
+                    break;
+            case R.id.radio_mixed:
+                if (checked)
+                    m = GameMaster.Mode.MIX;
+                    break;
+            case R.id.radio_terms:
+                if (checked)
+                    m = GameMaster.Mode.TERMS;
+                    break;
+        }
+    }
+    public void onPathClick(View view){
+        shouldConsiderTermId(0);
+        shouldLoadSet(0);
+
+        findViewById(R.id.pre_game).setVisibility(View.VISIBLE);
+        findViewById(R.id.ask_phase).setVisibility(View.GONE);
+        findViewById(R.id.fail_phase).setVisibility(View.GONE);
+        findViewById(R.id.skull).setVisibility(View.GONE);
+        currentGame = null;
+        textView.setText("Okay, we're starting a new Quest...");
     }
 }

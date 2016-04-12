@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:orientation="vertical"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="30dp"
+        android:padding="10dp"
+        android:text="Quizlet Quest!"/>
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Scan a Game Code To Begin!"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="10dp"
+        android:text="How do you want to Quest?"/>
+    <RadioGroup xmlns:android="http://schemas.android.com/apk/res/android"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingLeft="10dp"
+                android:checkedButton="@+id/radio_def">
+    <RadioButton android:id="@+id/radio_terms"
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:text="Terms"
+                 android:onClick="onRadioButtonClicked"/>
+    <RadioButton android:id="@+id/radio_mixed"
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:text="Mixed"
+                 android:onClick="onRadioButtonClicked"/>
+    <RadioButton android:id="@+id/radio_def"
+                 android:layout_width="wrap_content"
+                 android:layout_height="wrap_content"
+                 android:text="Definitions"
+                 android:onClick="onRadioButtonClicked"/>
+    </RadioGroup>
+</LinearLayout>
